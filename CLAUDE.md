@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Package manager is pnpm (pinned via `packageManager` in `package.json`; the README still shows `yarn`, prefer pnpm).
+Package manager is pnpm (pinned via `packageManager` in `package.json`; see README).
 
 - `pnpm install` — Install dependencies
 - `pnpm dev` — Start Vite dev server (accessible on LAN via `host: true`)

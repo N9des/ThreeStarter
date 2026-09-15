@@ -1,12 +1,14 @@
 # Three Starter
 
+Three.js boilerplate on Vite, using the WebGPU renderer (WebGL2 fallback) and TSL shaders.
+
 ## Init starter
 
-<pre><code>yarn install</code></pre>
+<pre><code>pnpm install</code></pre>
 
-<pre><code>yarn dev</code></pre>
+<pre><code>pnpm dev</code></pre>
 
-<pre><code>yarn build</code></pre>
+<pre><code>pnpm build</code></pre>
 
 ## Remove remote + add new repo
 
