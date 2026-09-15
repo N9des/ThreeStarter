@@ -1,10 +1,9 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { Pane } from 'tweakpane'
-import Stats from 'stats-gl'
+import * as THREE from 'three/webgpu';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Pane } from 'tweakpane';
+import Stats from 'stats-gl';
 
-import vertexShader from './shaders/vertex.glsl';
-import fragmentShader from './shaders/fragment.glsl';
+import { uProgress, positionNode, colorNode } from './shaders/plane.js';
 
 export default class Sketch {
 	constructor() {
@@ -12,16 +11,16 @@ export default class Sketch {
 		this.sizes = {
 			width: window.innerWidth,
 			height: window.innerHeight,
-		}
-		// Init Renderer
+		};
+		// Init Renderer (WebGPU with automatic WebGL2 fallback)
 		this.canvas = document.querySelector('canvas.webgl');
 
-		this.renderer = new THREE.WebGLRenderer({
+		this.renderer = new THREE.WebGPURenderer({
 			canvas: this.canvas,
-			antialias: true
+			antialias: true,
 		});
 		this.renderer.setSize(this.sizes.width, this.sizes.height);
-		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 		// Init scene
 		this.scene = new THREE.Scene();
@@ -37,22 +36,38 @@ export default class Sketch {
 		this.addStats();
 
 		// Init values
-		this.clock = new THREE.Clock();
+		this.timer = new THREE.Timer();
 
-		// Use setAnimationLoop for cleaner render loop (XR-ready)
-		this.renderer.setAnimationLoop(this.render.bind(this));
+		// Bind handlers once so they can be removed in destroy()
+		this.onResize = this.resize.bind(this);
+		this.onContextLost = this.onContextLost.bind(this);
+		this.onContextRestored = this.onContextRestored.bind(this);
+		this.render = this.render.bind(this);
 
 		// Resize
-		window.addEventListener('resize', this.resize.bind(this));
+		window.addEventListener('resize', this.onResize);
 
-		// Handle WebGL context loss and restore
-		this.canvas.addEventListener('webglcontextlost', this.onContextLost.bind(this));
-		this.canvas.addEventListener('webglcontextrestored', this.onContextRestored.bind(this));
+		// Handle context loss and restore (only fires on the WebGL2 fallback backend)
+		this.canvas.addEventListener('webglcontextlost', this.onContextLost);
+		this.canvas.addEventListener('webglcontextrestored', this.onContextRestored);
+
+		this.init();
+	}
+
+	async init() {
+		// WebGPU device acquisition is async; wait for it before rendering
+		await this.renderer.init();
+
+		const backend = this.renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
+		console.log(`Renderer backend: ${backend}`);
+
+		// Use setAnimationLoop for cleaner render loop (XR-ready)
+		this.renderer.setAnimationLoop(this.render);
 	}
 
 	addControls() {
-		this.controls = new OrbitControls(this.camera, this.canvas)
-		this.controls.enableDamping = true
+		this.controls = new OrbitControls(this.camera, this.canvas);
+		this.controls.enableDamping = true;
 	}
 
 	addCamera() {
@@ -68,14 +83,12 @@ export default class Sketch {
 	addMesh() {
 		this.geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
 
-		this.material = new THREE.ShaderMaterial({
-			vertexShader: vertexShader,
-			fragmentShader: fragmentShader,
-			uniforms: {
-				progress: { value: 0 },
-			},
+		// Node material driven by the TSL graph in shaders/plane.js
+		this.material = new THREE.MeshBasicNodeMaterial({
 			side: THREE.DoubleSide,
 		});
+		this.material.positionNode = positionNode;
+		this.material.colorNode = colorNode;
 
 		this.mesh = new THREE.Mesh(this.geometry, this.material);
 		this.scene.add(this.mesh);
@@ -91,7 +104,7 @@ export default class Sketch {
 
 	addDebug() {
 		this.pane = new Pane();
-		this.pane.addBinding(this.material.uniforms.progress, 'value', {
+		this.pane.addBinding(uProgress, 'value', {
 			label: 'uProgress',
 			min: 0.1,
 			max: 10,
@@ -119,16 +132,16 @@ export default class Sketch {
 
 	resize() {
 		// Update sizes
-    this.sizes.width = window.innerWidth
-    this.sizes.height = window.innerHeight
+		this.sizes.width = window.innerWidth;
+		this.sizes.height = window.innerHeight;
 
-    // Update camera
-    this.camera.aspect = this.sizes.width / this.sizes.height
-    this.camera.updateProjectionMatrix()
+		// Update camera
+		this.camera.aspect = this.sizes.width / this.sizes.height;
+		this.camera.updateProjectionMatrix();
 
-    // Update renderer
-    this.renderer.setSize(this.sizes.width, this.sizes.height)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+		// Update renderer
+		this.renderer.setSize(this.sizes.width, this.sizes.height);
+		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 	}
 
 	onContextLost(event) {
@@ -139,23 +152,24 @@ export default class Sketch {
 
 	onContextRestored() {
 		console.log('WebGL context restored.');
-		this.renderer.setAnimationLoop(this.render.bind(this));
+		this.renderer.setAnimationLoop(this.render);
 	}
 
 	render() {
-		const delta = this.clock.getDelta();
+		this.timer.update();
+		const delta = this.timer.getDelta();
 
 		this.stats.begin();
 
 		this.addAnim(delta);
 
 		// Update controls
-    this.controls.update();
+		this.controls.update();
 
 		this.renderer.render(this.scene, this.camera);
 
 		// Update renderer info in debug panel
-		this.rendererInfo.drawCalls = this.renderer.info.render.calls;
+		this.rendererInfo.drawCalls = this.renderer.info.render.drawCalls;
 		this.rendererInfo.triangles = this.renderer.info.render.triangles;
 		this.rendererInfo.geometries = this.renderer.info.memory.geometries;
 		this.rendererInfo.textures = this.renderer.info.memory.textures;
@@ -168,9 +182,9 @@ export default class Sketch {
 		this.renderer.setAnimationLoop(null);
 
 		// Remove event listeners
-		window.removeEventListener('resize', this.resize.bind(this));
-		this.canvas.removeEventListener('webglcontextlost', this.onContextLost.bind(this));
-		this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored.bind(this));
+		window.removeEventListener('resize', this.onResize);
+		this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+		this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
 
 		// Dispose GPU resources
 		this.scene.traverse((child) => {
