@@ -4,6 +4,10 @@ Three.js boilerplate on Vite, using the WebGPU renderer (WebGL2 fallback) and TS
 
 ## Init starter
 
+Node 24 (LTS) — `nvm use` picks it up from `.nvmrc`.
+
+<pre><code>nvm use</code></pre>
+
 <pre><code>pnpm install</code></pre>
 
 <pre><code>pnpm dev</code></pre>
